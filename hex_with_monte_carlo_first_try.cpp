@@ -1,7 +1,10 @@
 #include <iostream>
 #include <random>
 #include <vector>
+#include <tuple>
 #include <algorithm>
+#include <ctime>
+#include <cstdlib>
 
 using namespace std;
 
@@ -59,16 +62,18 @@ public:
 	bool IsValidPlay(int& row_pos, int& col_pos);           /* return whether the user input position is valid */
 	void Play(bool player, int& row_pos, int& col_pos);            /* place a move. player = false means first player; player = true means second player. */
 	void RandomPlay(bool player);     /* randomly place a valid move */
-	bool FirstPlayerWon();    /* The first player (1) won if the vertices 1 connects from top to bottom. */
-	bool SecondPlayerWon();    /* The second player (2) won if the vertices 2 connects from left to right. */
+	virtual bool FirstPlayerWon();    /* The first player (1) won if the vertices 1 connects from top to bottom. */
+	virtual bool SecondPlayerWon();    /* The second player (2) won if the vertices 2 connects from left to right. */
 	int EndGame();       /* If no winner yet, returns 0; If first player wins, returns 1; If second player wins, returns 2 */
+	
+	bool whos_next();     /* Determine who's the next player from the game position. false means first player, true means second player.  */
 	
 	void PrintBoard();                                         /* FOR DEBUGGING: print vertices and adjacent matrices   */
 	vector<int> GetCurrentVertices();               /* FOR DEBUGGING */
 	vector<vector<bool> > GetOriginalEdgeAdjMat();               /* FOR DEBUGGING */
 	
-private:
-
+protected:
+	
 	int _board_size;                 /* the number of points on each side  */
 	int _num_vertices;                 /* the number of points on the entire board  */
 	vector<int> _vexs;         /* information (value) of the vertex. 0 means empty, 1 means 1st player played, 2 means 2nd player played.  */
@@ -77,8 +82,8 @@ private:
 	vector<vector<bool> > _second_edge;     /* second player adjacent matrix  */
 	
 	void _initialize_original_edge();     /* fill in _original_edge, false if not adjacent, true if adjacent  */
-	void _update_first_edge();     /* fill in _fist_edge, false if not adjacent, true if adjacent  */
-	void _update_second_edge();     /* fill in _second_edge, false if not adjacent, true if adjacent  */
+	virtual void _update_first_edge();     /* fill in _fist_edge, false if not adjacent, true if adjacent  */
+	virtual void _update_second_edge();     /* fill in _second_edge, false if not adjacent, true if adjacent  */
 	
 };
 
@@ -511,7 +516,405 @@ void Board :: RandomPlay(bool player)
 }
 
 
+bool Board :: whos_next()
+{
+	return (((this -> _num_vertices) - count((this -> _vexs).begin(), (this -> _vexs).end(), 0)) % 2 != 0);
+}
+
+
 /* Completed Inplementing Board. */
+
+
+class MonteCarloBoard : public Board
+{
+public:
+
+	MonteCarloBoard();
+	MonteCarloBoard(const int& board_size, const int& mc_number);
+	virtual ~MonteCarloBoard();
+	
+	virtual bool FirstPlayerWon(bool on_monte_carlo_testing_board = false);    /* The first player (1) won if the vertices 1 connects from top to bottom. */
+	virtual bool SecondPlayerWon(bool on_monte_carlo_testing_board = false);    /* The second player (2) won if the vertices 2 connects from left to right. */
+	
+	tuple<float, float> get_winning_rate(bool next_player);    /* Use Monte Carlo to calculate winning probability of the current position. */
+	void BestPlay(bool player);          /* place a valid move which maximize the winning probability.  TODO */
+	void PrintMonteCarloBoard();                                         /* FOR DEBUGGING: print vertices and adjacent matrices from "_monte_carlo_vexs"  */
+
+protected:
+	virtual void _update_first_edge(bool on_monte_carlo_testing_board = false);     /* fill in _fist_edge, false if not adjacent, true if adjacent  */
+	virtual void _update_second_edge(bool on_monte_carlo_testing_board = false);     /* fill in _second_edge, false if not adjacent, true if adjacent  */
+	
+private:
+	
+	int mc_number;  /* number of simulations in the Monte Carlo. */
+
+	vector<int> _monte_carlo_vexs_starting_position;         /* information (value) of the vertex for Monte Carlo experiments. 0 means empty, 1 means 1st player played, 2 means 2nd player played. */
+	vector<int> _monte_carlo_vexs;         /* information (value) of the vertex for Monte Carlo end game. No empty positions, 1 means 1st player played, 2 means 2nd player played. */
+	vector<vector<bool> > _monte_carlo_fist_edge;    /* first player adjacent matrix for Monte Carlo experiments */
+	vector<vector<bool> > _monte_carlo_second_edge;     /* second player adjacent matrix for Monte Carlo experiments */
+	
+	int _generate_monte_carlo_endgame(bool next_player);       /* Fill in the board from _monte_carlo_vexs_starting_position ONCE with Monte Carlo random moves and return who wins (draw = 0, first player = 1, second player = 2).*/
+	tuple<float, float> _get_monte_carlo_winning_rate(bool next_player);      /* Use Monte Carlo to calculate winning probability of the "_monte_carlo_vexs_starting_position". */
+};
+
+
+MonteCarloBoard :: MonteCarloBoard() : Board()    /* default size: 11 x 11. Default mc_numvber = 50,000 */
+{
+	(this -> mc_number) = 50000;
+	(this -> _monte_carlo_vexs_starting_position).resize((this -> _num_vertices), 0);
+	(this -> _monte_carlo_vexs).resize((this -> _num_vertices), 0);
+	(this -> _monte_carlo_fist_edge).resize(_num_vertices, vector<bool>((this -> _num_vertices), false));
+	(this -> _monte_carlo_second_edge).resize(_num_vertices, vector<bool>((this -> _num_vertices), false));
+}
+
+
+MonteCarloBoard :: MonteCarloBoard(const int& board_size, const int& mc_number) : Board(board_size)
+{	
+	(this -> mc_number) = mc_number;
+	(this -> _monte_carlo_vexs_starting_position).resize((this -> _num_vertices), 0);
+	(this -> _monte_carlo_vexs).resize((this -> _num_vertices), 0);
+	(this -> _monte_carlo_fist_edge).resize((this -> _num_vertices), vector<bool>((this -> _num_vertices), false));
+	(this -> _monte_carlo_second_edge).resize((this -> _num_vertices), vector<bool>((this -> _num_vertices), false));
+}
+
+
+MonteCarloBoard :: ~MonteCarloBoard()
+{	
+}
+
+
+void MonteCarloBoard :: PrintMonteCarloBoard()
+{
+	cout << endl << "---------------------------------------------------------------------------" << endl;
+	cout << "First Player: 1 \tSecond Player: 2\t Empty Positions: 0" << endl;
+	cout << "Printing vertices:" << endl;
+	for (int i=0; i < this -> _board_size; i++)
+	{	
+		for (int j=0; j < this -> _board_size; j++)
+		{
+			cout << (this -> _monte_carlo_vexs)[i * (this -> _board_size) + j] << "  ";
+		}
+		cout << endl;
+	}
+	cout << endl << "---------------------------------------------------------------------------" << endl;
+	cout << "Printing first player's adjacent matrix:" << endl;
+	for (int i=0; i < (this -> _num_vertices); i++)
+	{	
+		for (int j=0; j < (this -> _num_vertices); j++)
+		{
+			cout << (this -> _monte_carlo_fist_edge)[i][j] << "  ";
+		}
+		cout << endl;
+	}
+	cout << endl << "---------------------------------------------------------------------------" << endl;
+	cout << "Printing second player's adjacent matrix:" << endl;
+	for (int i=0; i < (this -> _num_vertices); i++)
+	{	
+		for (int j=0; j < (this -> _num_vertices); j++)
+		{
+			cout << (this -> _monte_carlo_second_edge)[i][j] << "  ";
+		}
+		cout << endl;
+	}
+	cout << endl << "---------------------------------------------------------------------------" << endl << endl;
+}
+
+
+
+bool MonteCarloBoard :: FirstPlayerWon(bool on_monte_carlo_testing_board /* = false*/)    /* The first player (1) won if the vertices 1 connects from top to bottom. */
+{
+	vector<int> span;
+	
+	int min_bottom = (this -> _num_vertices) - (this -> _board_size);
+	
+	if (on_monte_carlo_testing_board)
+	{
+		for(int i=0; i < (this -> _board_size); i++)
+		{
+			if ((this -> _monte_carlo_vexs)[i] != 1)
+			{
+				continue;
+			}
+			span = find_maximal_span(this -> _monte_carlo_fist_edge, i);
+			
+			for (auto p = span.begin(); p != span.end(); p++)
+			{
+				if (*p >= min_bottom)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	else
+	{
+		for(int i=0; i < (this -> _board_size); i++)
+		{
+			if ((this -> _vexs)[i] != 1)
+			{
+				continue;
+			}
+			span = find_maximal_span(this -> _fist_edge, i);
+			
+			for (auto p = span.begin(); p != span.end(); p++)
+			{
+				if (*p >= min_bottom)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+
+
+bool MonteCarloBoard :: SecondPlayerWon(bool on_monte_carlo_testing_board /* = false*/)    /* The second player (2) won if the vertices 2 connects from left to right. */
+{
+	vector<int> span;
+	
+	if (on_monte_carlo_testing_board)
+	{
+		for(int i=0; i < (this -> _num_vertices); i = i + (this -> _board_size))
+		{
+			if ((this -> _monte_carlo_vexs)[i] != 2)
+			{
+				continue;
+			}
+			
+			span = find_maximal_span(this -> _monte_carlo_second_edge, i);
+			
+			for (auto p = span.begin(); p != span.end(); p++)
+			{
+				if (*p % (this -> _board_size) == ((this -> _board_size) - 1))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	else
+	{
+		for(int i=0; i < (this -> _num_vertices); i = i + (this -> _board_size))
+		{
+			if ((this -> _vexs)[i] != 2)
+			{
+				continue;
+			}
+			
+			span = find_maximal_span(this -> _second_edge, i);
+			
+			for (auto p = span.begin(); p != span.end(); p++)
+			{
+				if (*p % (this -> _board_size) == ((this -> _board_size) - 1))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+
+
+void MonteCarloBoard :: _update_first_edge(bool on_monte_carlo_testing_board /* = false*/)
+{	
+	if (on_monte_carlo_testing_board)
+	{
+		for(int i = 0; i < this -> _num_vertices; i++)
+		{
+			for(int j=0; j < this -> _num_vertices; j++)
+			{
+				if ((this -> _original_edge)[i][j] && ((this -> _monte_carlo_vexs)[i] == 1) && ((this -> _monte_carlo_vexs)[j] == 1))
+				{
+					(this -> _monte_carlo_fist_edge)[i][j] = true;
+				}
+				else
+				{
+					(this -> _monte_carlo_fist_edge)[i][j] = false;
+				}
+			}
+		}
+	}
+	else
+	{
+		for(int i = 0; i < this -> _num_vertices; i++)
+		{
+			for(int j=0; j < this -> _num_vertices; j++)
+			{
+				if ((this -> _original_edge)[i][j] && ((this -> _vexs)[i] == 1) && ((this -> _vexs)[j] == 1))
+				{
+					(this -> _fist_edge)[i][j] = true;
+				}
+			}
+		}
+	}
+} 
+
+
+void MonteCarloBoard :: _update_second_edge(bool on_monte_carlo_testing_board /* = false*/)
+{	
+	if (on_monte_carlo_testing_board)
+	{
+		for(int i = 0; i < this -> _num_vertices; i++)
+		{
+			for(int j=0; j < this -> _num_vertices; j++)
+			{
+				if ((this -> _original_edge)[i][j] && ((this -> _monte_carlo_vexs)[i] == 2) && ((this -> _monte_carlo_vexs)[j] == 2))
+				{
+					(this -> _monte_carlo_second_edge)[i][j] = true;
+				}
+				else
+				{
+					(this -> _monte_carlo_second_edge)[i][j] = false;
+				}
+			}
+		}
+	}
+	else
+	{
+		for(int i = 0; i < this -> _num_vertices; i++)
+		{
+			for(int j=0; j < this -> _num_vertices; j++)
+			{
+				if ((this -> _original_edge)[i][j] && ((this -> _vexs)[i] == 2) && ((this -> _vexs)[j] == 2))
+				{
+					(this -> _second_edge)[i][j] = true;
+				}
+			}
+		}
+	}
+}
+
+
+int MonteCarloBoard :: _generate_monte_carlo_endgame(bool next_player)   /* "_monte_carlo_vexs_starting_position" has to be predetermined. */
+{
+	random_device rd;
+	mt19937 eng(rd());
+	
+	(this -> _monte_carlo_vexs) = (this -> _monte_carlo_vexs_starting_position);
+	
+	srand (unsigned(time(0) ) );
+	int num_valid = count((this -> _monte_carlo_vexs_starting_position).begin(), (this -> _monte_carlo_vexs_starting_position).end(), 0);
+	
+	vector<bool> rest_moves(num_valid, next_player);
+	for (int i = 0; i < (num_valid / 2); i++)
+	{
+		rest_moves[i] = !next_player;
+	}
+	
+	shuffle(rest_moves.begin(), rest_moves.end(), eng);
+	
+	int count_remaining_entries = num_valid;
+	for(auto p=(this -> _monte_carlo_vexs).begin(); p!=(this -> _monte_carlo_vexs).end(); ++p)
+	{
+		if ((count_remaining_entries > 0) && (*p == 0))
+		{
+			count_remaining_entries -= 1;
+			*p = int(rest_moves[count_remaining_entries]) + 1;   /* false means first player; true means second player. */
+		}
+		if (count_remaining_entries == 0)
+		{
+			break;
+		}
+	}
+	
+	(this -> _update_first_edge)(true);
+	(this -> _update_second_edge)(true);
+	
+	
+	if ((this -> FirstPlayerWon)(true))
+	{
+		return 1;
+	}
+	else if ((this -> SecondPlayerWon)(true))
+	{
+		return 2;
+	}
+	else
+	{
+		return 0;    /* This never happens */
+	}
+}
+
+
+tuple<float, float> MonteCarloBoard :: _get_monte_carlo_winning_rate(bool next_player)   /* "_monte_carlo_vexs_starting_position" has to be predetermined. */
+{	
+	int first_win_count = 0;
+	int second_win_count = 0;
+	
+	for (int i = 0; i < this -> mc_number; i++)
+	{
+		int temp_result = (this -> _generate_monte_carlo_endgame)(next_player);
+		
+		if (temp_result == 1)
+		{
+			first_win_count += 1;
+		}
+		else if (temp_result == 2)
+		{
+			second_win_count += 1;	
+		}
+	}
+	
+	tuple<float, float> result((float)first_win_count / (float)(this -> mc_number), (float)second_win_count / (float)(this -> mc_number));
+	return result;
+}
+
+
+tuple<float, float> MonteCarloBoard :: get_winning_rate(bool next_player)
+{
+	(this -> _monte_carlo_vexs_starting_position) = (this -> _vexs);
+	return (this -> _get_monte_carlo_winning_rate)(next_player);
+}
+
+
+void MonteCarloBoard :: BestPlay(bool player)
+{	
+	int num_valid = count((this -> _vexs).begin(), (this -> _vexs).end(), 0);
+	if (num_valid > 0)
+	{
+		vector<float> next_winning_rate((this -> _num_vertices), -1);
+		tuple<float, float> temp_evaluation;
+		
+		
+		for (int i = 0; i < (this -> _num_vertices); i++)
+		{
+			if ((this -> _vexs)[i] == 0)
+			{
+				(this -> _monte_carlo_vexs_starting_position) = (this -> _vexs);
+				(this -> _monte_carlo_vexs_starting_position)[i] = int(player) + 1;
+				
+				temp_evaluation = (this -> _get_monte_carlo_winning_rate)(!player);
+				if (player)
+				{
+					next_winning_rate[i] = get<1>(temp_evaluation);
+				}
+				else
+				{
+					next_winning_rate[i] = get<0>(temp_evaluation);
+				}
+			}
+		}
+		
+		auto maxi = max_element(next_winning_rate.begin(), next_winning_rate.end());
+		(this -> _vexs)[maxi - next_winning_rate.begin()] = int(player) + 1;  /* player = false means first player; player = true means second player. */
+		
+		if (player)
+		{
+			this -> _update_second_edge();
+		}
+		else
+		{
+			this -> _update_first_edge();
+		}
+	}
+}
+
+
+/* Completed Inplementing Board with Monte Carlo AI. */
 
 
 int main()
@@ -519,10 +922,13 @@ int main()
    
     int board_size;
     cout << "How Many Points On Each Side? " << endl;
-    cout << " - Input an integer between 3 and 20..." << endl;
+    cout << " - Input an integer between 3 and 12..." << endl;
+    cout << " Warning: size 11 board takes 2 minutes to play each step ... Recommend playing size 7 board instead." << endl;
     cin >> board_size;
     
-    Board board = Board(board_size);
+    int customize_mc_number = 10000 / board_size / board_size;
+    
+    MonteCarloBoard board = MonteCarloBoard(board_size, customize_mc_number);
     board.PlotBoard();
     
     cout << "You are the first player. " << endl;
@@ -538,7 +944,10 @@ int main()
 			board.Play(false, a, b);
 			if ((!board.IsFull()) && (!board.EndGame()))
 			{
-				board.RandomPlay(true);
+				
+				//board.RandomPlay(true);     /* computer place a random move */
+				board.BestPlay(true);     /* computer place the best move based on Monte-Carlo algorithm */
+				
 			}
 			board.PlotBoard();
 	    }
@@ -565,3 +974,4 @@ int main()
 		cout << "Draw." << endl;    /* This never happens */
 	}
 }
+
