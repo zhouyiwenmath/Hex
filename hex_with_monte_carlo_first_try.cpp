@@ -563,8 +563,8 @@ MonteCarloBoard :: MonteCarloBoard() : Board()    /* default size: 11 x 11. Defa
 	(this -> mc_number) = 50000;
 	(this -> _monte_carlo_vexs_starting_position).resize((this -> _num_vertices), 0);
 	(this -> _monte_carlo_vexs).resize((this -> _num_vertices), 0);
-	(this -> _monte_carlo_fist_edge).resize(_num_vertices, vector<bool>((this -> _num_vertices), false));
-	(this -> _monte_carlo_second_edge).resize(_num_vertices, vector<bool>((this -> _num_vertices), false));
+	(this -> _monte_carlo_fist_edge).resize((this -> _num_vertices), vector<bool>((this -> _num_vertices), false));
+	(this -> _monte_carlo_second_edge).resize((this -> _num_vertices), vector<bool>((this -> _num_vertices), false));
 }
 
 
@@ -796,7 +796,6 @@ int MonteCarloBoard :: _generate_monte_carlo_endgame(bool next_player)   /* "_mo
 	
 	(this -> _monte_carlo_vexs) = (this -> _monte_carlo_vexs_starting_position);
 	
-	srand (unsigned(time(0) ) );
 	int num_valid = count((this -> _monte_carlo_vexs_starting_position).begin(), (this -> _monte_carlo_vexs_starting_position).end(), 0);
 	
 	vector<bool> rest_moves(num_valid, next_player);
@@ -922,8 +921,8 @@ int main()
    
     int board_size;
     cout << "How Many Points On Each Side? " << endl;
-    cout << " - Input an integer between 3 and 12..." << endl;
-    cout << " Warning: size 11 board takes 2 minutes to play each step ... Recommend playing size 7 board instead." << endl;
+    cout << "(Warning: size 11 board takes 2 minutes to play each step ... Recommend playing size 7 board instead.)" << endl;
+    cout << "\n - Input an integer between 3 and 12..." << endl;
     cin >> board_size;
     
     int customize_mc_number = 10000 / board_size / board_size;
